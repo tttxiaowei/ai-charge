@@ -44,77 +44,72 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import type { CategoryNode } from '@/types/window';
 
-export default {
-  setup() {
-    const router = useRouter();
-    const categories = ref([]);
+const router = useRouter();
+const categories = ref<CategoryNode[]>([]);
 
-    const form = reactive({
-      amount: null,
-      categoryIds: [],
-      occurTime: new Date(),
-      note: '',
+const form = reactive({
+  amount: null as number | null,
+  categoryIds: [] as number[],
+  occurTime: new Date(),
+  note: '',
+});
+
+const cascaderOptions = computed(() =>
+  categories.value.map((c) => ({
+    value: c.id,
+    label: c.name,
+    children: c.children.map((child) => ({ value: child.id, label: child.name })),
+  }))
+);
+
+function formatDateTime(dt: unknown): string {
+  if (!dt) return new Date().toISOString().slice(0, 10);
+  const d = new Date(dt as string | number | Date);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function resetForm() {
+  form.amount = null;
+  form.categoryIds = [];
+  form.occurTime = new Date();
+  form.note = '';
+}
+
+async function handleSave() {
+  if (!form.amount || form.categoryIds.length < 2) {
+    ElMessage.warning('请填写金额并选择完整的分类（大类+小类）');
+    return;
+  }
+  const categoryId = form.categoryIds[form.categoryIds.length - 1];
+  try {
+    await window.chargeDB.addTransaction({
+      amount: form.amount,
+      categoryId,
+      occurTime: formatDateTime(form.occurTime),
+      note: form.note,
     });
+    ElMessage.success('已保存一笔花销');
+    resetForm();
+    router.push('/records');
+  } catch (e) {
+    ElMessage.error('保存失败：' + (e as Error).message);
+  }
+}
 
-    const cascaderOptions = computed(() =>
-      categories.value.map((c) => ({
-        value: c.id,
-        label: c.name,
-        children: c.children.map((child) => ({ value: child.id, label: child.name })),
-      }))
-    );
-
-    function formatDateTime(dt) {
-      if (!dt) return new Date().toISOString().slice(0, 10);
-      const d = new Date(dt);
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
-
-    function resetForm() {
-      form.amount = null;
-      form.categoryIds = [];
-      form.occurTime = new Date();
-      form.note = '';
-    }
-
-    async function handleSave() {
-      if (!form.amount || form.categoryIds.length < 2) {
-        ElMessage.warning('请填写金额并选择完整的分类（大类+小类）');
-        return;
-      }
-      const categoryId = form.categoryIds[form.categoryIds.length - 1];
-      try {
-        window.chargeDB.addTransaction({
-          amount: form.amount,
-          categoryId,
-          occurTime: formatDateTime(form.occurTime),
-          note: form.note,
-        });
-        ElMessage.success('已保存一笔花销');
-        resetForm();
-        router.push('/records');
-      } catch (e) {
-        ElMessage.error('保存失败：' + e.message);
-      }
-    }
-
-    onMounted(async () => {
-      try {
-        categories.value = await window.chargeDB.getCategories();
-      } catch (e) {
-        ElMessage.error('加载分类失败：' + e.message);
-      }
-    });
-
-    return { form, cascaderOptions, handleSave };
-  },
-};
+onMounted(async () => {
+  try {
+    categories.value = await window.chargeDB.getCategories();
+  } catch (e) {
+    ElMessage.error('加载分类失败：' + (e as Error).message);
+  }
+});
 </script>
 
 <style scoped>

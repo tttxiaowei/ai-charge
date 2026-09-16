@@ -39,100 +39,89 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import { ElMessage } from 'element-plus';
+import type { CategorySummaryRow } from '@/types/window';
 
-export default {
-  setup() {
-    const month = ref(currentMonth());
-    const loading = ref(false);
-    const chartRef = ref(null);
-    const totalCents = ref(0);
-    const totalCount = ref(0);
-    let chartInstance = null;
+const month = ref(currentMonth());
+const loading = ref(false);
+const chartRef = ref<HTMLDivElement | null>(null);
+const totalCents = ref(0);
+const totalCount = ref(0);
+let chartInstance: echarts.ECharts | null = null;
 
-    function currentMonth() {
-      const d = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+function currentMonth(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+
+function formatAmount(cents: number) {
+  return (cents / 100).toFixed(2);
+}
+
+async function loadStats() {
+  loading.value = true;
+  try {
+    const rows: CategorySummaryRow[] = await window.chargeDB.getCategorySummary({
+      month: month.value || undefined,
+    });
+    totalCents.value = rows.reduce((sum, r) => sum + r.total_cents, 0);
+    totalCount.value = rows.reduce((sum, r) => sum + r.count, 0);
+
+    await nextTick();
+    if (!chartInstance && chartRef.value) {
+      chartInstance = echarts.init(chartRef.value);
     }
-
-    function formatAmount(cents) {
-      return (cents / 100).toFixed(2);
-    }
-
-    async function loadStats() {
-      loading.value = true;
-      try {
-        const rows = await window.chargeDB.getCategorySummary({ month: month.value || undefined });
-        totalCents.value = rows.reduce((sum, r) => sum + r.total_cents, 0);
-        totalCount.value = rows.reduce((sum, r) => sum + r.count, 0);
-
-        await nextTick();
-        if (!chartInstance && chartRef.value) {
-          chartInstance = echarts.init(chartRef.value);
-        }
-        if (chartInstance) {
-          chartInstance.setOption({
-            tooltip: { trigger: 'item' },
-            legend: { orient: 'vertical', left: 'left' },
-            series: [
-              {
-                type: 'pie',
-                radius: ['40%', '70%'],
-                avoidLabelOverlap: false,
-                data: rows.map((r) => ({
-                  name: r.parent_name,
-                  value: r.total_cents / 100,
-                })),
-                label: {
-                  formatter: (p) => {
-                    const totalYuan = totalCents.value / 100 || 1;
-                    const pct = ((p.value / totalYuan) * 100).toFixed(1);
-                    return `${p.name}\n¥${p.value.toFixed(2)} (${pct}%)`;
-                  },
-                },
+    if (chartInstance) {
+      chartInstance.setOption({
+        tooltip: { trigger: 'item' },
+        legend: { orient: 'vertical', left: 'left' },
+        series: [
+          {
+            type: 'pie',
+            radius: ['40%', '70%'],
+            avoidLabelOverlap: false,
+            data: rows.map((r) => ({
+              name: r.parent_name,
+              value: r.total_cents / 100,
+            })),
+            label: {
+              formatter: (p: any) => {
+                const totalYuan = totalCents.value / 100 || 1;
+                const pct = ((p.value / totalYuan) * 100).toFixed(1);
+                return `${p.name}\n¥${p.value.toFixed(2)} (${pct}%)`;
               },
-            ],
-          });
-        }
-      } catch (e) {
-        ElMessage.error('加载统计失败：' + e.message);
-      } finally {
-        loading.value = false;
-      }
+            },
+          },
+        ],
+      });
     }
+  } catch (e) {
+    ElMessage.error('加载统计失败：' + (e as Error).message);
+  } finally {
+    loading.value = false;
+  }
+}
 
-    function handleResize() {
-      if (chartInstance) chartInstance.resize();
-    }
+function handleResize() {
+  if (chartInstance) chartInstance.resize();
+}
 
-    onMounted(async () => {
-      window.addEventListener('resize', handleResize);
-      await loadStats();
-    });
+onMounted(async () => {
+  window.addEventListener('resize', handleResize);
+  await loadStats();
+});
 
-    onBeforeUnmount(() => {
-      window.removeEventListener('resize', handleResize);
-      if (chartInstance) {
-        chartInstance.dispose();
-        chartInstance = null;
-      }
-    });
-
-    return {
-      month,
-      loading,
-      totalCents,
-      totalCount,
-      chartRef,
-      formatAmount,
-      loadStats,
-    };
-  },
-};
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize);
+  if (chartInstance) {
+    chartInstance.dispose();
+    chartInstance = null;
+  }
+});
 </script>
 
 <style scoped>

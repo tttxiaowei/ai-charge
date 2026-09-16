@@ -23,24 +23,18 @@
   </el-container>
 </template>
 
-<script>
+<script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router';
 
-export default {
-  setup() {
-    const route = useRoute();
-    const router = useRouter();
+const route = useRoute();
+const router = useRouter();
 
-    // el-menu router 模式下 index 即路由 path 名，这里用 index 匹配 route.name
-    const activeIndex = () => route.name || '';
+// el-menu router 模式下 index 即路由 path 名，这里用 index 匹配 route.name
+const activeIndex = () => route.name || '';
 
-    const onMenuSelect = (index) => {
-      router.push('/' + index);
-    };
-
-    return { activeIndex, onMenuSelect, route };
-  },
-};
+function onMenuSelect(index: string) {
+  router.push('/' + index);
+}
 </script>
 
 <style scoped>

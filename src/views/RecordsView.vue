@@ -26,14 +26,14 @@
       <el-table-column label="分类" prop="category_name" width="120"></el-table-column>
       <el-table-column label="金额（元）" width="120">
         <template #default="{ row }">
-          ¥ {{ formatAmount(row.amount_cents) }}
+          ¥ {{ formatAmount((row as TransactionRow).amount_cents) }}
         </template>
       </el-table-column>
       <el-table-column label="备注" prop="note"></el-table-column>
       <el-table-column label="操作" width="130">
         <template #default="{ row }">
-          <el-button link @click="openEdit(row)">编辑</el-button>
-          <el-popconfirm title="确认删除这笔花销？" @confirm="handleDelete(row.id)">
+          <el-button link @click="openEdit(row as TransactionRow)">编辑</el-button>
+          <el-popconfirm title="确认删除这笔花销？" @confirm="handleDelete((row as TransactionRow).id)">
             <template #reference>
               <el-button link type="danger">删除</el-button>
             </template>
@@ -87,153 +87,136 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
+import type {
+  CategoryNode,
+  TransactionRow,
+} from '@/types/window';
 
-export default {
-  setup() {
-    const transactions = ref([]);
-    const categories = ref([]);
-    const loading = ref(false);
-    const filterMonth = ref('');
-    const filterCategoryIds = ref([]);
-    const editingId = ref(null);
-    const editDialogVisible = ref(false);
+const transactions = ref<TransactionRow[]>([]);
+const categories = ref<CategoryNode[]>([]);
+const loading = ref(false);
+const filterMonth = ref('');
+const filterCategoryIds = ref<number[]>([]);
+const editingId = ref<number | null>(null);
+const editDialogVisible = ref(false);
 
-    const form = reactive({
-      amount: null,
-      categoryIds: [],
-      occurTime: new Date(),
-      note: '',
+const form = reactive({
+  amount: null as number | null,
+  categoryIds: [] as number[],
+  occurTime: new Date(),
+  note: '',
+});
+
+const cascaderOptions = computed(() =>
+  categories.value.map((c) => ({
+    value: c.id,
+    label: c.name,
+    children: c.children.map((child) => ({ value: child.id, label: child.name })),
+  }))
+);
+
+function formatAmount(cents: number) {
+  return (cents / 100).toFixed(2);
+}
+
+async function loadTransactions() {
+  loading.value = true;
+  try {
+    const categoryId = filterCategoryIds.value.length
+      ? filterCategoryIds.value[filterCategoryIds.value.length - 1]
+      : undefined;
+    transactions.value = await window.chargeDB.getTransactions({
+      month: filterMonth.value || undefined,
+      categoryId,
     });
+  } catch (e) {
+    ElMessage.error('加载记录失败：' + (e as Error).message);
+  } finally {
+    loading.value = false;
+  }
+}
 
-    const cascaderOptions = computed(() =>
-      categories.value.map((c) => ({
-        value: c.id,
-        label: c.name,
-        children: c.children.map((child) => ({ value: child.id, label: child.name })),
-      }))
-    );
-
-    function formatAmount(cents) {
-      return (cents / 100).toFixed(2);
-    }
-
-    async function loadTransactions() {
-      loading.value = true;
-      try {
-        const categoryId = filterCategoryIds.value.length
-          ? filterCategoryIds.value[filterCategoryIds.value.length - 1]
-          : undefined;
-        transactions.value = await window.chargeDB.getTransactions({
-          month: filterMonth.value || undefined,
-          categoryId,
-        });
-      } catch (e) {
-        ElMessage.error('加载记录失败：' + e.message);
-      } finally {
-        loading.value = false;
-      }
-    }
-
-    async function handleSave() {
-      if (!form.amount || form.categoryIds.length < 2) {
-        ElMessage.warning('请填写金额并选择完整的分类（大类+小类）');
-        return;
-      }
-      const categoryId = form.categoryIds[form.categoryIds.length - 1];
-      try {
-        await window.chargeDB.updateTransaction(editingId.value, {
-          amount: form.amount,
-          categoryId,
-          occurTime: formatDateTime(form.occurTime),
-          note: form.note,
-        });
-        ElMessage.success('已更新');
-        cancelEdit();
-        loadTransactions();
-      } catch (e) {
-        ElMessage.error('保存失败：' + e.message);
-      }
-    }
-
-    function openEdit(row) {
-      editingId.value = row.id;
-      form.amount = row.amount_cents / 100;
-      form.categoryIds = [findParentId(row), row.category_id];
-      form.occurTime = row.occur_time;
-      form.note = row.note || '';
-      editDialogVisible.value = true;
-    }
-
-    function findParentId(row) {
-      for (const c of categories.value) {
-        const child = c.children.find((x) => x.id === row.category_id);
-        if (child) return c.id;
-      }
-      return null;
-    }
-
-    function cancelEdit() {
-      editingId.value = null;
-      form.amount = null;
-      form.categoryIds = [];
-      form.occurTime = new Date();
-      form.note = '';
-      editDialogVisible.value = false;
-    }
-
-    async function handleDelete(id) {
-      try {
-        await window.chargeDB.deleteTransaction(id);
-        ElMessage.success('已删除');
-        loadTransactions();
-      } catch (e) {
-        ElMessage.error('删除失败：' + e.message);
-      }
-    }
-
-    function resetFilters() {
-      filterMonth.value = '';
-      filterCategoryIds.value = [];
-      loadTransactions();
-    }
-
-    function formatDateTime(dt) {
-      if (!dt) return new Date().toISOString().slice(0, 10);
-      const d = new Date(dt);
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
-
-    onMounted(async () => {
-      try {
-        categories.value = await window.chargeDB.getCategories();
-        loadTransactions();
-      } catch (e) {
-        ElMessage.error('加载失败：' + e.message);
-      }
+async function handleSave() {
+  if (!form.amount || form.categoryIds.length < 2) {
+    ElMessage.warning('请填写金额并选择完整的分类（大类+小类）');
+    return;
+  }
+  const categoryId = form.categoryIds[form.categoryIds.length - 1];
+  try {
+    await window.chargeDB.updateTransaction(editingId.value as number, {
+      amount: form.amount,
+      categoryId,
+      occurTime: formatDateTime(form.occurTime),
+      note: form.note,
     });
+    ElMessage.success('已更新');
+    cancelEdit();
+    loadTransactions();
+  } catch (e) {
+    ElMessage.error('保存失败：' + (e as Error).message);
+  }
+}
 
-    return {
-      transactions,
-      loading,
-      filterMonth,
-      filterCategoryIds,
-      form,
-      editingId,
-      editDialogVisible,
-      cascaderOptions,
-      formatAmount,
-      handleSave,
-      openEdit,
-      cancelEdit,
-      handleDelete,
-      resetFilters,
-    };
-  },
-};
+function openEdit(row: TransactionRow) {
+  editingId.value = row.id;
+  form.amount = row.amount_cents / 100;
+  form.categoryIds = [findParentId(row), row.category_id];
+  form.occurTime = row.occur_time as unknown as Date;
+  form.note = row.note || '';
+  editDialogVisible.value = true;
+}
+
+function findParentId(row: TransactionRow): number {
+  for (const c of categories.value) {
+    const child = c.children.find((x) => x.id === row.category_id);
+    if (child) return c.id;
+  }
+  return 0;
+}
+
+function cancelEdit() {
+  editingId.value = null;
+  form.amount = null;
+  form.categoryIds = [];
+  form.occurTime = new Date();
+  form.note = '';
+  editDialogVisible.value = false;
+}
+
+async function handleDelete(id: number) {
+  try {
+    await window.chargeDB.deleteTransaction(id);
+    ElMessage.success('已删除');
+    loadTransactions();
+  } catch (e) {
+    ElMessage.error('删除失败：' + (e as Error).message);
+  }
+}
+
+function resetFilters() {
+  filterMonth.value = '';
+  filterCategoryIds.value = [];
+  loadTransactions();
+}
+
+function formatDateTime(dt: unknown): string {
+  if (!dt) return new Date().toISOString().slice(0, 10);
+  const d = new Date(dt as string | number | Date);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+onMounted(async () => {
+  try {
+    categories.value = await window.chargeDB.getCategories();
+    loadTransactions();
+  } catch (e) {
+    ElMessage.error('加载失败：' + (e as Error).message);
+  }
+});
 </script>
 
 <style scoped>

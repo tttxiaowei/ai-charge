@@ -27,32 +27,26 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ElMessage } from 'element-plus';
 
-export default {
-  setup() {
-    async function handleExport() {
-      try {
-        const csv = await window.chargeDB.exportCSV();
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `charge-export-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        ElMessage.success('已导出 CSV');
-      } catch (e) {
-        ElMessage.error('导出失败：' + e.message);
-      }
-    }
-
-    return { handleExport };
-  },
-};
+async function handleExport() {
+  try {
+    const csv = await window.chargeDB.exportCSV();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `charge-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    ElMessage.success('已导出 CSV');
+  } catch (e) {
+    ElMessage.error('导出失败：' + (e as Error).message);
+  }
+}
 </script>
 
 <style scoped>
