@@ -12,3 +12,6 @@ npm-debug.log*
 # 系统 / 编辑器
 .DS_Store
 Thumbs.db
+
+# Claude Code 本地个人配置（权限白名单等，不随项目共享）
+.claude/settings.local.json
