@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Bash(env -u ELECTRON_RUN_AS_NODE npm install)"
+    ]
+  }
+}

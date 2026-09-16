@@ -1,0 +1,57 @@
+{
+  "name": "heima-charge",
+  "version": "0.1.0",
+  "description": "黑马记账 - 桌面记账工具（Windows / macOS）",
+  "main": "src-electron/main.js",
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "build": "vite build",
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "start": "npm run build && electron ."
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "echarts": "^5.5.0",
+    "element-plus": "^2.8.0",
+    "pinia": "^2.2.0",
+    "vue": "^3.4.0",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^9.0.0",
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.0",
+    "electron-builder": "^25.0.0",
+    "electron-rebuild": "^3.2.9",
+    "vite": "^5.4.0",
+    "vue-tsc": "^2.0.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.heima.charge",
+    "productName": "黑马记账",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src-electron/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}
