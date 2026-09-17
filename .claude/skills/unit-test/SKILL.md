@@ -17,7 +17,7 @@ description: 对黑马记账的数据层 db.ts 做单元测试并出报告。用
 
 1. **不碰真实库**：`db.ts` 顶层 `init()` 读 `process.env.HC_USER_DATA_DIR`，必须在 `import` db 之前指向一个 `/tmp` 临时目录。绝不能用顶层静态 `import`（ESM hoisting 会让 import 先于 env 赋值执行）。
 2. **不改生产代码**：所有隔离逻辑放测试文件 / `vitest.config.ts` / 环境变量，不动 `src-electron/*.ts`。
-3. **better-sqlite3 是 CJS 原生模块**：默认按 Electron ABI（125）编译，Node（127）加载会报 `NODE_MODULE_VERSION` 不匹配。跑单测前需把它重编为 Node ABI；跑完记得切回 Electron ABI（`npm run build` 会做）。
+3. **better-sqlite3 是 CJS 原生模块**：默认按 Electron ABI（125）编译，Node（127）加载会报 `NODE_MODULE_VERSION` 不匹配。**已自动化**：`npm test` / `npm run test:coverage` 会自动切 Node ABI → 跑测试 → 切回 Electron ABI，无需手动。单独切：`npm run switch-abi-node` / `npm run switch-abi-electron`。
 4. **WAL 模式可见性隔离**：`db.ts` 内部 `dbInstance`（WAL）写出的数据，本进程内的后续读看不到（跨模块实例分裂）。断言数据落地要用**独立 better-sqlite3 连接 + `wal_checkpoint`** 读磁盘。
 5. **Vitest 版本锁定 2.x**：`vitest@5` 要求 Vite 6+，本项目是 Vite 5.4。已用 `vitest@^2.1` + `@vitest/coverage-v8@^2.1`。
 
@@ -30,33 +30,22 @@ cd /Users/xiaowei/test/charge
 npm i -D vitest@^2.1 @vitest/coverage-v8@^2.1
 ```
 
-### 2. 把 better-sqlite3 重编为 Node ABI（跑测试前必须）
+### 2. 跑测试 + 出报告（ABI 切换全自动）
 ```bash
-# 在 better-sqlite3 目录里重编成 Node 版（约 1–2 分钟）
-(cd node_modules/better-sqlite3 && npx --prefix .. node-gyp rebuild)
+npm test             # = 切Node ABI → vitest run → 切回Electron ABI
+npm run test:coverage # = 同上 + 生成 coverage/ 覆盖率报告
 ```
+> 一键搞定，不用手动切 ABI。脚本用 `prebuild-install` 秒级切（失败才本地编译），且切回那步用 `;` 保证测试失败也切回，避免 dev 崩。
 
-### 3. 跑测试 + 出报告
-```bash
 # 快速跑（控制台报告：几 pass / 几 fail + 明细）
 npm test            # = vitest run
 
-# 带覆盖率报告（生成 coverage/ 目录 + 控制台表）
-npm run test:coverage   # = vitest run --coverage
-```
-
-### 4. 解读报告
+### 3. 解读报告
 - **控制台**：`Test Files X passed`、`Tests N passed`；失败会列 `→ 期望 vs 实际` + 报错位置。
 - **覆盖率**（`--coverage`）：关注 `src-electron/db.ts` 那行的 `Stmt%`/`Fn%`。`main.ts`/`preload.ts` 是 0% 正常（它们依赖 Electron，不测）。
 - **db.ts 未覆盖的行**通常是「WAL 写后本进程读不回」的那段（`getTransactions`/`getCategorySummary`/`exportCSV` 内部），这些已被测试里的「磁盘层验证」用独立连接绕着覆盖了，别误判成漏测。
 
-### 5. 跑完切回 Electron ABI（恢复 dev/打包可用）
-```bash
-npm run build   # 会触发 electron-builder install-app-deps，把 better-sqlite3 重编回 Electron ABI
-```
-> 或者下次 `npm install` 时 postinstall 自动做。
-
-### 6. 复核真实库没被污染（收尾必做）
+### 4. 复核真实库没被污染（收尾必做）
 ```bash
 sqlite3 "$HOME/Library/Application Support/heima-charge/charge.db" "SELECT COUNT(*) FROM user_transaction;"
 ```
@@ -73,7 +62,7 @@ sqlite3 "$HOME/Library/Application Support/heima-charge/charge.db" "SELECT COUNT
 
 | 现象 | 根因 | 解法 |
 |---|---|---|
-| `NODE_MODULE_VERSION 125 vs 127` | better-sqlite3 编成 Electron ABI，Vitest 跑在 Node | 跑测试前重编为 Node ABI；跑完切回 |
+| `NODE_MODULE_VERSION 125 vs 127` | better-sqlite3 编成 Electron ABI，Vitest 跑在 Node | `npm test` 已自动切；单独 `npm run switch-abi-node` / `switch-abi-electron` |
 | 顶层 `import` 后 env 没生效，测试写进真实库 | ESM import hoisting 先于 env 赋值 | `beforeAll` 里动态 `import`，env 先设 |
 | insert 后 `getTransactions` 返回 `[]`，但新连接 + checkpoint 能读到 | WAL 模式下 db 模块内部连接与测试读连接不共享可见性 | 断言走独立连接 + `wal_checkpoint` |
 | `vitest` 装成 5.x 报 Vite 版本冲突 | vitest 5 要 Vite 6+，本项目 Vite 5.4 | 锁 `vitest@^2.1` |
