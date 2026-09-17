@@ -53,17 +53,18 @@
 
 | 层面 | 选型 | 说明 |
 |---|---|---|
-| 前端框架 | Vue 3 + Vite | 用户指定 |
+| 前端框架 | Vue 3 + Vite + TypeScript | 用户指定 |
 | UI 组件库 | Element Plus | 含表单校验、级联选择器（Cascader）适合两级分类选择 |
 | 状态管理 | Pinia | Vue 官方推荐状态管理库 |
 | 桌面壳 | Electron + electron-builder | 双平台打包：Windows NSIS、macOS DMG |
-| 数据库访问 | `better-sqlite3` | Node.js 原生 SQLite 驱动，需 `electron-rebuild` 适配 Electron ABI |
+| 语言 | TypeScript（全项目） | 前端 `vue-tsc` 类型检查；主进程 `tsc` 编译为 CJS 产物 |
+| 数据库访问 | `better-sqlite3` | Node.js 原生 SQLite 驱动，需 `electron-rebuild` 适配 Electron ABI；类型由 `@types/better-sqlite3` 提供 |
 | 数据存储位置 | Electron `app.getPath('userData')` 目录下 | Windows: `%APPDATA%`；macOS: `~/Library/Application Support`，便于跨机器备份/迁移 |
 
 ## 5. 数据模型设计
 
-- `Transaction`（一笔花销）：`id`、`amount`（以"分"为单位存储整数，避免浮点误差）、`categoryId`（二级分类 id）、`occurTime`、`note`、`createdAt`
-- `Category`：`id`、`level`（1 或 2）、`parentId`、`name`、`icon`、`sort`
+- 一笔花销 `user_transaction`：`id`、`amount_cents`（以"分"为单位存储整数，避免浮点误差）、`category_id`（二级分类 id）、`occur_time`、`note`、`created_at`
+- 分类 `category`：`id`、`level`（1 或 2）、`parent_id`、`name`、`icon`、`sort`
 
 本地存储确认使用 SQLite（`better-sqlite3`），数据库文件存放在上述 `userData` 目录，便于用户手动备份或迁移到其他机器。
 
@@ -78,34 +79,42 @@
 
 ```
 charge/
-├── src/                     # 前端（Vue 3 + Vite + Element Plus + Pinia + ECharts）
-│   ├── main.js              # 入口：挂载 App、Pinia、Element Plus、Router
+├── src/                     # 前端（Vue 3 + Vite + TypeScript + Element Plus + Pinia + ECharts）
+│   ├── main.ts              # 入口：挂载 App、Pinia、Element Plus、Router
 │   ├── App.vue              # 布局壳（侧边导航 + 路由出口）
-│   ├── router.js            # vue-router 路由（records / stats / settings）
+│   ├── router.ts            # vue-router 路由（quick-record / records / stats / settings）
+│   ├── types/
+│   │   └── window.d.ts      # window.chargeDB 全局 API 类型声明（对应 preload.ts）
 │   └── views/
-│       ├── RecordsView.vue  # 记账列表 + 新增/编辑表单 + 删除
-│       ├── StatsView.vue    # 当月概览 + ECharts 环形图分类占比
-│       └── SettingsView.vue # CSV 导出 / 关于 / 分类管理（预留）
-├── src-electron/
-│   ├── main.js              # Electron 主进程：窗口、IPC handler 注册
-│   ├── preload.js           # contextBridge 暴露 chargeDB API
-│   └── db.js                # better-sqlite3 数据层（建表、种子分类、CRUD、聚合、CSV）
-├── index.html               # Vite 入口 HTML
-├── vite.config.js
+│       ├── QuickRecordView.vue  # 记账表单（新增一笔花销）
+│       ├── RecordsView.vue      # 记账列表 + 编辑/删除
+│       ├── StatsView.vue        # 当月概览 + ECharts 环形图分类占比
+│       └── SettingsView.vue     # CSV 导出 / 关于 / 分类管理（预留）
+├── src-electron/            # 主进程源码（TypeScript）
+│   ├── main.ts              # Electron 主进程：窗口、IPC handler 注册
+│   ├── preload.ts           # contextBridge 暴露 chargeDB API
+│   └── db.ts                # better-sqlite3 数据层（建表、种子分类、CRUD、聚合、CSV）
+├── dist-electron/           # tsc 编译产物（CJS），package.json main 指向 dist-electron/main.js（已 gitignore）
+├── tsconfig.json            # 前端 Vue/TS 编译配置（vue-tsc --noEmit 用）
+├── tsconfig.electron.json   # 主进程编译配置（tsc 输出到 dist-electron/）
+├── index.html               # Vite 入口 HTML（引用 /src/main.ts）
+├── vite.config.ts
 ├── package.json             # 含 electron-builder 打包配置（NSIS / DMG）
 └── CLAUDE.md                # 本文件
 ```
 
 数据库文件位置（运行时自动生成）：
-- macOS: `~/Library/Application Support/heima-charge/charge.db`
+- macOS: `~/Library/Application Support/heima-charge/charge.db`（开发模式下 app 名为 `heima-charge`；打包后为 `黑马记账`）
 - Windows: `%APPDATA%/heima-charge/charge.db`
 
 ### 常用命令
 
 ```bash
 npm install                 # 首次安装（postinstall 自动 electron-builder install-app-deps 编译 better-sqlite3）
-npm run dev                 # 开发模式（Vite dev server + Electron 同时启动）
-npm run build               # 构建前端到 dist/
+npm run dev                 # 开发模式：先 tsc 编译主进程到 dist-electron/，再 Vite + Electron 同时启动
+npm run build               # 构建：先 build:electron（tsc），再 vite build 前端到 dist/
+npm run build:electron      # 单独编译主进程 TS → dist-electron/（CJS）
+npm run type-check          # 前端类型检查（vue-tsc --noEmit）
 npm run start               # 构建后以生产模式启动 Electron
 npm run dist:mac            # 打包 macOS DMG
 npm run dist:win            # 打包 Windows NSIS（需在 Windows 机器上运行）
@@ -114,9 +123,11 @@ npm run dist:win            # 打包 Windows NSIS（需在 Windows 机器上运�
 ### 注意事项 / 踩坑记录
 
 - **`ELECTRON_RUN_AS_NODE=1` 会让 Electron 退化成纯 Node 模式**：不启动 GUI、不注入内置 `electron` 模块，导致 `require('electron')` 拿到的是 npm shim（路径字符串），`app` 为 `undefined`。启动 Electron 前务必确认该环境变量未设置（`env -u ELECTRON_RUN_AS_NODE ...`）。
-- **`better-sqlite3` 是原生模块**：`postinstall` 会自动调用 `electron-builder install-app-deps` 重新编译以匹配 Electron ABI。换 Node/Electron 版本或换机器后需重跑 `npm install`。
-- **`transaction` 是 SQLite 保留关键字**：建表与所有 SQL 语句中该表名必须用双引号包裹（`"transaction"`），本代码已统一处理。
-- **数据库初始化时机**：`db.js` 顶层调用 `init()`，依赖 `HC_USER_DATA_DIR` 环境变量；`main.js` 在 `app.whenReady()` 后先把 `app.getPath('userData')` 写入该变量再 `require('./db')`，避免提前加载时报错。
+- **`better-sqlite3` 是原生模块**：`postinstall` 会自动调用 `electron-builder install-app-deps` 重新编译以匹配 Electron ABI。换 Node/Electron 版本或换机器后需重跑 `npm install`。纯 Node 直连库文件（`node -e "require('better-sqlite3')"`）会因 ABI 不匹配（Electron ABI 125 vs Node 127）报错——验证数据层请走 Electron 本身或直接 `sqlite3` CLI。
+- **交易表名是 `user_transaction`（非保留字，无需双引号）**：建表与所有 SQL 语句统一使用 `user_transaction`。历史版本曾用保留字 `transaction`（需双引号），已重命名并迁移。
+- **数据库初始化时机**：`db.ts` 顶层调用 `init()`，依赖 `HC_USER_DATA_DIR` 环境变量；`main.ts` 在 `app.whenReady()` 后先把 `app.getPath('userData')` 写入该变量，再通过 `require('./db.js')`（CJS 产物）延迟加载 db，避免提前初始化时报错。
+- **主进程是 TS 但产物是 CJS**：`src-electron/*.ts` 用 ESM 风格 `import`，由 `tsconfig.electron.json`（`module: CommonJS`）编译到 `dist-electron/`。改了主进程源码必须重跑 `npm run build:electron`（`dev`/`build` 已自动串接）；Electron 加载的是 `dist-electron/main.js`，不是 `.ts` 源文件。
+- **`typescript` 锁定 5.x**：`vue-tsc@2` 依赖 `typescript` 的 `lib/tsc` 子路径，TS 7（beta）改了 exports 会报 `ERR_PACKAGE_PATH_NOT_EXPORTED`。本仓用 `typescript@^5.9`。
 - **打包 DMG 需要能访问 Electron 发布源**：本机网络访问 GitHub 会超时，可用 `ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"` 走镜像。
 
 ### 当前完成状态
@@ -127,13 +138,13 @@ npm run dist:win            # 打包 Windows NSIS（需在 Windows 机器上运�
 ## 8. 开发迭代步骤（分阶段里程碑）
 
 **阶段 1：项目脚手架**
-- 初始化 Vue 3 + Vite 项目
-- 集成 Electron 主进程（`main.js`/`preload.js`）与 electron-builder
+- 初始化 Vue 3 + Vite + TypeScript 项目
+- 集成 Electron 主进程（`main.ts`/`preload.ts`）与 electron-builder；主进程 TS 经 `tsc` 编译为 CJS 产物
 - 集成 `better-sqlite3`，配置 `electron-rebuild`（Postinstall 自动适配 Electron ABI）
-- 配置 pnpm / electron-builder 打包脚本（Windows NSIS、macOS DMG）
+- 配置 electron-builder 打包脚本（Windows NSIS、macOS DMG）
 
 **阶段 2：数据层**
-- 设计并生成 SQLite 建表语句（`category`、`transaction` 表，含字段约束、默认值）
+- 设计并生成 SQLite 建表语句（`category`、`user_transaction` 表，含字段约束、默认值）
 - 首次启动自动建库、插入 8 个一级大类 + 二级小类初始数据
 - 封装数据库访问模块（增删改查、按月聚合查询）
 
@@ -160,7 +171,7 @@ npm run dist:win            # 打包 Windows NSIS（需在 Windows 机器上运�
 
 ## 9. 验证方式
 
-- 本地启动开发模式验证双平台构建（`pnpm dev`）
+- 本地启动开发模式验证双平台构建（`npm run dev`）
 - 记录/编辑/删除一笔花销，切换分类，导出 CSV 验证数据正确性
 - 分别构建 Windows 与 macOS 安装包，并在两台机器上验证可安装运行
 
