@@ -3,6 +3,7 @@ node_modules/
 
 # 构建产物 / 打包输出
 dist/
+dist-electron/
 release/
 
 # 日志

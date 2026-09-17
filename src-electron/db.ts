@@ -1,13 +1,14 @@
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const Database = require('better-sqlite3');
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import Database from 'better-sqlite3';
+import type { Database as DatabaseType } from 'better-sqlite3';
 
-let dbInstance = null;
+let dbInstance: DatabaseType | null = null;
 
 // 解析数据库文件位置：优先使用 Electron app.getPath('userData')（若已注入），
 // 否则回退到各平台的等效用户数据目录，保证在纯 Node 环境下也能测试。
-function resolveUserDataDir() {
+function resolveUserDataDir(): string {
   if (typeof process.env.HC_USER_DATA_DIR === 'string' && process.env.HC_USER_DATA_DIR) {
     return process.env.HC_USER_DATA_DIR;
   }
@@ -17,10 +18,10 @@ function resolveUserDataDir() {
       : process.platform === 'darwin'
         ? path.join(os.homedir(), 'Library', 'Application Support')
         : path.join(os.homedir(), '.config');
-  return path.join(platformDir, '黑马记账');
+  return path.join(platformDir as string, '黑马记账');
 }
 
-function ensureDir(dir) {
+function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -36,7 +37,16 @@ const SEED_CATEGORIES = [
   { level: 1, name: '其他支出', children: ['人情往来', '缴费办理', '意外支出', '分类不明'] },
 ];
 
-function init() {
+interface CategoryRow {
+  id: number;
+  level: number;
+  parent_id: number | null;
+  name: string;
+  sort: number;
+  children?: CategoryRow[];
+}
+
+function init(): void {
   const dbPath = path.join(resolveUserDataDir(), 'charge.db');
   ensureDir(path.dirname(dbPath));
   dbInstance = new Database(dbPath);
@@ -64,14 +74,14 @@ function init() {
   `);
 
   // 首次建库时插入种子分类数据
-  const count = dbInstance.prepare('SELECT COUNT(*) AS c FROM category').get().c;
-  if (count === 0) {
+  const count = dbInstance.prepare('SELECT COUNT(*) AS c FROM category').get() as { c: number };
+  if (count.c === 0) {
     const insertCat = dbInstance.prepare(
       'INSERT INTO category (level, parent_id, name, sort) VALUES (?, ?, ?, ?)'
     );
     const tx = dbInstance.transaction(() => {
       for (const group of SEED_CATEGORIES) {
-        const info = insertCat.run(1, null, group.name, 0);
+        const info = insertCat.run(group.level, null, group.name, 0);
         const parentId = info.lastInsertRowid;
         group.children.forEach((child, i) => {
           insertCat.run(2, parentId, child, i);
@@ -82,35 +92,61 @@ function init() {
   }
 }
 
-function getCategories() {
-  const rows = dbInstance.prepare('SELECT id, level, parent_id, name, sort FROM category').all();
-  const topLevel = rows.filter(r => r.level === 1).sort((a, b) => a.sort - b.sort);
+function getCategories(): CategoryRow[] {
+  const rows = dbInstance!.prepare('SELECT id, level, parent_id, name, sort FROM category').all() as unknown as CategoryRow[];
+  const topLevel = rows.filter((r) => r.level === 1).sort((a, b) => a.sort - b.sort);
   for (const item of topLevel) {
-    item.children = rows.filter(r => r.parent_id === item.id);
+    item.children = rows.filter((r) => r.parent_id === item.id);
   }
   return topLevel;
 }
 
-function addTransaction({ amount, categoryId, occurTime, note }) {
-  const amountCents = Math.round(parseFloat(amount) * 100);
-  const info = dbInstance
-    .prepare('INSERT INTO user_transaction (amount_cents, category_id, occur_time, note) VALUES (?, ?, ?, ?)')
-    .run(amountCents, categoryId, occurTime, note || null);
-  return info.lastInsertRowid;
+export interface TransactionInput {
+  amount: number | string;
+  categoryId: number;
+  occurTime: string;
+  note?: string;
 }
 
-function updateTransaction(id, { amount, categoryId, occurTime, note }) {
-  const amountCents = Math.round(parseFloat(amount) * 100);
-  dbInstance
-    .prepare('UPDATE user_transaction SET amount_cents=?, category_id=?, occur_time=?, note=? WHERE id=?')
-    .run(amountCents, categoryId, occurTime, note || null, id);
+function addTransaction({ amount, categoryId, occurTime, note }: TransactionInput): number {
+  const amountCents = Math.round(parseFloat(String(amount)) * 100);
+  const stmt = (dbInstance as any)!.prepare(
+    'INSERT INTO user_transaction (amount_cents, category_id, occur_time, note) VALUES (?, ?, ?, ?)'
+  );
+  // @ts-ignore @types/better-sqlite3@9.x 的 run() 参数重载与 mixed 参数不兼容
+  const info = stmt.run(amountCents, categoryId, occurTime, note || null);
+  return Number(info.lastInsertRowid);
 }
 
-function deleteTransaction(id) {
-  dbInstance.prepare('DELETE FROM user_transaction WHERE id=?').run(id);
+function updateTransaction(id: number, { amount, categoryId, occurTime, note }: TransactionInput): void {
+  const amountCents = Math.round(parseFloat(String(amount)) * 100);
+  const stmt = (dbInstance as any)!.prepare(
+    'UPDATE user_transaction SET amount_cents=?, category_id=?, occur_time=?, note=? WHERE id=?'
+  );
+  // @ts-ignore 同上
+  stmt.run(amountCents, categoryId, occurTime, note || null, id);
 }
 
-function getTransactions({ month, categoryId } = {}) {
+function deleteTransaction(id: number): void {
+  dbInstance!.prepare('DELETE FROM user_transaction WHERE id=?').run(id);
+}
+
+export interface TransactionRow {
+  id: number;
+  amount_cents: number;
+  category_id: number;
+  occur_time: string;
+  note: string | null;
+  category_name: string;
+  parent_category_name: string;
+}
+
+export interface TransactionFilter {
+  month?: string;
+  categoryId?: number;
+}
+
+function getTransactions({ month, categoryId }: TransactionFilter = {}): TransactionRow[] {
   let sql = `
     SELECT t.id, t.amount_cents, t.category_id, t.occur_time, t.note,
            c.name AS category_name, p.name AS parent_category_name
@@ -118,10 +154,10 @@ function getTransactions({ month, categoryId } = {}) {
     JOIN category c ON c.id = t.category_id
     JOIN category p ON p.id = c.parent_id
   `;
-  const params = [];
-  const where = [];
+  const params: (string | number)[] = [];
+  const where: string[] = [];
   if (month) {
-    where.push("substr(t.occur_time, 1, 7) = ?");
+    where.push('substr(t.occur_time, 1, 7) = ?');
     params.push(month);
   }
   if (categoryId) {
@@ -130,10 +166,21 @@ function getTransactions({ month, categoryId } = {}) {
   }
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
   sql += ' ORDER BY t.occur_time DESC, t.id DESC';
-  return dbInstance.prepare(sql).all(...params);
+  return dbInstance!.prepare(sql).all(...params) as unknown as TransactionRow[];
 }
 
-function getCategorySummary({ month } = {}) {
+export interface CategorySummaryRow {
+  parent_id: number;
+  parent_name: string;
+  total_cents: number;
+  count: number;
+}
+
+export interface SummaryFilter {
+  month?: string;
+}
+
+function getCategorySummary({ month }: SummaryFilter = {}): CategorySummaryRow[] {
   const sql = `
     SELECT p.id AS parent_id, p.name AS parent_name,
            SUM(t.amount_cents) AS total_cents, COUNT(*) AS count
@@ -143,19 +190,19 @@ function getCategorySummary({ month } = {}) {
     ${month ? "WHERE substr(t.occur_time, 1, 7) = ?" : ''}
     GROUP BY p.id, p.name
   `;
-  return dbInstance.prepare(sql).all(...(month ? [month] : []));
+  return dbInstance!.prepare(sql).all(...(month ? [month] : [])) as unknown as CategorySummaryRow[];
 }
 
-function exportCSV() {
-  const rows = dbInstance
+function exportCSV(): string {
+  const rows = dbInstance!
     .prepare(
       `SELECT t.amount_cents, t.occur_time, t.note, c.name AS category_name, p.name AS parent_name
        FROM user_transaction t
        JOIN category c ON c.id = t.category_id
        JOIN category p ON p.id = c.parent_id`
     )
-    .all();
-  let csv = '\uFEFF'; // UTF-8 BOM，方便 Excel 直接打开中文
+    .all() as unknown as Array<{ amount_cents: number; occur_time: string; note: string | null; category_name: string; parent_name: string }>;
+  let csv = '﻿'; // UTF-8 BOM，方便 Excel 直接打开中文
   csv += '日期,一级分类,二级分类,金额(元),备注\n';
   for (const r of rows) {
     const amount = (r.amount_cents / 100).toFixed(2);
@@ -168,12 +215,4 @@ function exportCSV() {
 // 应用启动时初始化一次数据库
 init();
 
-module.exports = {
-  getCategories,
-  addTransaction,
-  updateTransaction,
-  deleteTransaction,
-  getTransactions,
-  getCategorySummary,
-  exportCSV,
-};
+export { getCategories, addTransaction, updateTransaction, deleteTransaction, getTransactions, getCategorySummary, exportCSV };
