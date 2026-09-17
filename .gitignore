@@ -17,3 +17,6 @@ Thumbs.db
 # Claude Code 本地个人配置（权限白名单等，不随项目共享）
 .claude/settings.local.json
 
+# 测试覆盖率报告（vitest --coverage 生成）
+coverage/
+

@@ -13,6 +13,8 @@
     "build": "npm run build:electron && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "rebuild": "electron-rebuild",
     "postinstall": "electron-builder install-app-deps",
     "dist": "npm run build && electron-builder",
@@ -31,6 +33,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@vitejs/plugin-vue": "^5.0.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.3",
     "electron": "^31.0.0",
@@ -38,6 +41,7 @@
     "electron-rebuild": "^3.2.9",
     "typescript": "^5.9.3",
     "vite": "^5.4.0",
+    "vitest": "^2.1.9",
     "vue-tsc": "^2.0.0",
     "wait-on": "^7.2.0"
   },
