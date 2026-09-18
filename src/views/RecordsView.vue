@@ -94,6 +94,7 @@ import type {
   CategoryNode,
   TransactionRow,
 } from '@/types/window';
+import { formatDateTime, formatAmount } from '@/utils/date';
 
 const transactions = ref<TransactionRow[]>([]);
 const categories = ref<CategoryNode[]>([]);
@@ -117,10 +118,6 @@ const cascaderOptions = computed(() =>
     children: c.children.map((child) => ({ value: child.id, label: child.name })),
   }))
 );
-
-function formatAmount(cents: number) {
-  return (cents / 100).toFixed(2);
-}
 
 async function loadTransactions() {
   loading.value = true;
@@ -200,13 +197,6 @@ function resetFilters() {
   filterMonth.value = '';
   filterCategoryIds.value = [];
   loadTransactions();
-}
-
-function formatDateTime(dt: unknown): string {
-  if (!dt) return new Date().toISOString().slice(0, 10);
-  const d = new Date(dt as string | number | Date);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 onMounted(async () => {

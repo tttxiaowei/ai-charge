@@ -44,6 +44,7 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import { ElMessage } from 'element-plus';
 import type { CategorySummaryRow } from '@/types/window';
+import { formatAmount } from '@/utils/date';
 
 const month = ref(currentMonth());
 const loading = ref(false);
@@ -56,10 +57,6 @@ function currentMonth(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-}
-
-function formatAmount(cents: number) {
-  return (cents / 100).toFixed(2);
 }
 
 async function loadStats() {

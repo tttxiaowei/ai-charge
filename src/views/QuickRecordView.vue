@@ -49,6 +49,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import type { CategoryNode } from '@/types/window';
+import { formatDateTime } from '@/utils/date';
 
 const router = useRouter();
 const categories = ref<CategoryNode[]>([]);
@@ -67,13 +68,6 @@ const cascaderOptions = computed(() =>
     children: c.children.map((child) => ({ value: child.id, label: child.name })),
   }))
 );
-
-function formatDateTime(dt: unknown): string {
-  if (!dt) return new Date().toISOString().slice(0, 10);
-  const d = new Date(dt as string | number | Date);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 function resetForm() {
   form.amount = null;

@@ -104,7 +104,7 @@ charge/
 ```
 
 数据库文件位置（运行时自动生成）：
-- macOS: `~/Library/Application Support/heima-charge/charge.db`（开发模式下 app 名为 `heima-charge`；打包后为 `黑马记账`）
+- macOS: `~/Library/Application Support/heima-charge/charge.db`（开发模式下 app 名为 `heima-charge`，由 Electron `app.getPath('userData')` 决定，取 `package.json` 的 `name`；打包后取 `productName` = `黑马记账`。纯 Node 直接跑 `db.ts`（不经 Electron）时回退到 `db.ts` 里硬编码的 `黑马记账` 目录）
 - Windows: `%APPDATA%/heima-charge/charge.db`
 
 ### 常用命令
@@ -115,9 +115,14 @@ npm run dev                 # 开发模式：先 tsc 编译主进程到 dist-ele
 npm run build               # 构建：先 build:electron（tsc），再 vite build 前端到 dist/
 npm run build:electron      # 单独编译主进程 TS → dist-electron/（CJS）
 npm run type-check          # 前端类型检查（vue-tsc --noEmit）
+npm test                    # 数据层单测（Vitest）：自动 切Node ABI → vitest → 切回Electron ABI
+npm run test:coverage       # 同上 + 生成 coverage/ 覆盖率报告
 npm run start               # 构建后以生产模式启动 Electron
 npm run dist:mac            # 打包 macOS DMG
 npm run dist:win            # 打包 Windows NSIS（需在 Windows 机器上运行）
+```
+
+> **`npm test` 的 ABI 副作用**：脚本会先把 `better-sqlite3` 重编为 Node ABI（供 Vitest 跑），跑完自动切回 Electron ABI（dev/打包可继续用）。全程幂等，无需手动 `npm run rebuild`；若中途中断，手动 `npm run switch-abi-electron` 兜底。
 ```
 
 ### 注意事项 / 踩坑记录

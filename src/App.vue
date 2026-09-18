@@ -24,17 +24,13 @@
 </template>
 
 <script setup lang="ts">
-import { useRoute, useRouter } from 'vue-router';
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
 
 const route = useRoute();
-const router = useRouter();
 
-// el-menu router 模式下 index 即路由 path 名，这里用 index 匹配 route.name
-const activeIndex = () => route.name || '';
-
-function onMenuSelect(index: string) {
-  router.push('/' + index);
-}
+// el-menu router 模式下 index 即路由 path 名，这里用 index 匹配 route.name；用 computed 让路由变化时自动更新
+const activeIndex = computed(() => (route.name as string) || '');
 </script>
 
 <style scoped>
